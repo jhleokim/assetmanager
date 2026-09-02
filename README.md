@@ -23,6 +23,7 @@ node tools/compare-legacy.js    # 수정 전후 숫자 비교
 - [x] 프로토타입 문제 분석 ([ANALYSIS.md](docs/ANALYSIS.md))
 - [x] 시세·실거래가 조회 계층 분석 ([NETWORK.md](docs/NETWORK.md))
 - [x] 다중 사용자 전환 설계 ([MULTIUSER.md](docs/MULTIUSER.md)) — 인증은 Cloudflare Access로 결정
+- [x] 자산 데이터 보관 방식 결정 ([DATA-PRIVACY.md](docs/DATA-PRIVACY.md)) — 로컬 우선 + 종단간 암호화
 - [x] 계산 로직 분리 + P0-1~3, P0-6, P1-1~4 수정 (`core/`)
 - [ ] XSS 정리 (`esc()` 보강, `innerHTML` → DOM 생성) — 인증 도입 전 필수
 - [ ] Worker + D1 이전
@@ -60,9 +61,18 @@ open prototype/index.html
 
 빌드 과정이 없다. 파일을 브라우저로 열면 된다.
 
-## 데이터 취급 주의
+## 데이터 취급
 
-- 모든 자산 정보는 브라우저 localStorage에만 저장되며 서버로 전송되지 않는다.
-- 다만 **시세·실거래가 조회 요청은 기본적으로 외부 CORS 프록시를 경유**하며,
-  이때 공공데이터포털 인증키가 해당 프록시 서버를 통과한다 (ANALYSIS.md P0-4).
+가족 자산 정보는 법적 의미의 "민감정보"는 아니지만(개인정보보호법 제23조 목록에 없음),
+가족 전체의 순자산·계좌·부동산이 한곳에 모이는 데이터다. 보관 설계는
+[`DATA-PRIVACY.md`](docs/DATA-PRIVACY.md)에 정리했다.
+
+**결정**: 자산 원본은 브라우저(IndexedDB)에 두고, 서버에는 **브라우저에서 암호화한
+blob만** 올린다. 서버는 내용을 읽을 수 없다. 시세·실거래가 중계는 개인정보를
+전혀 다루지 않으므로 서버가 그대로 담당한다.
+
+프로토타입 사용 시 주의:
+- 자산 정보는 브라우저 localStorage에만 저장되며 서버로 전송되지 않는다.
+- 다만 **시세·실거래가 조회는 외부 CORS 프록시를 경유**하며, 이때 공공데이터포털
+  인증키가 그 서버를 통과한다 (ANALYSIS.md P0-4). 서버 중계로 옮기면 해결된다.
 - 브라우저 저장소는 캐시 삭제·용량 초과로 사라질 수 있다. JSON 백업을 별도 보관할 것.
