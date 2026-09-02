@@ -16,8 +16,8 @@ database_id = "cb47cc1a-cc08-4dca-b9c6-e15bdd78e0c3"
 [vars]
 ENVIRONMENT = "production"
 # Cloudflare Zero Trust → Access → Applications 에서 앱을 만들고 아래 두 값을 채운다.
-ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
-ACCESS_AUD = "REPLACE_WITH_APPLICATION_AUDIENCE_TAG"
+ACCESS_TEAM_DOMAIN = "spaceleo.cloudflareaccess.com"
+ACCESS_AUD = "147cf527797d3f52555a4829c2e63e5f60225a7166a225a1b117a650254bcc8d"
 
 # 비밀은 vars에 두지 않는다:
 #   wrangler secret put RTMS_KEY     ← 공공데이터포털 일반 인증키(Decoding)
