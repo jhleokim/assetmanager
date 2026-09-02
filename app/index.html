@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>가족 통합 자산관리</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="progress"><i></i></div>
+
+<div id="lock" hidden>
+  <div class="box"><h3>데이터 잠금 해제</h3>
+    <div class="bd">
+      <p class="note" id="lockMsg">자산 데이터는 이 암호로 암호화되어 서버에 저장됩니다. 서버는 암호를 알지 못하므로, <b>암호를 잃으면 복구할 수 없습니다.</b></p>
+      <div class="field"><label>데이터 잠금 암호</label><input type="password" id="lockPw" autocomplete="current-password"></div>
+      <div class="field" id="lockPw2Wrap" hidden><label>암호 확인</label><input type="password" id="lockPw2" autocomplete="new-password"></div>
+      <div class="row"><button class="btn primary" id="lockGo">열기</button><span class="note" id="lockErr"></span></div>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="logo">₩ 가족 통합 자산관리<span id="today"></span></div>
+  <div class="spacer"></div>
+  <span class="sync" id="syncMsg"></span>
+  <button class="btn accent" id="btnRefresh">시세 갱신</button>
+  <button class="btn" id="btnSnap">스냅샷 저장</button>
+  <div class="kpi"><b id="hdTotal">-</b><br><small id="hdNet">-</small></div>
+</header>
+
+<nav class="tabs" id="nav" role="tablist"></nav>
+
+<main>
+  <section class="panel" id="p-dash" role="tabpanel">
+    <div class="cards" id="dashCards"></div>
+    <div class="cards" id="dashCards2"></div>
+    <div class="box"><h3>시장 지수 <span class="hint" id="idxNote"></span></h3><div class="bd"><div class="cards" id="idxCards" style="margin:0"></div></div></div>
+    <div class="grid2">
+      <div class="box"><h3>카테고리별 자산 비중</h3><div class="bd" id="chPie"></div></div>
+      <div class="box"><h3>카테고리별 원금 vs 현재가치</h3><div class="bd" id="chBar"></div></div>
+    </div>
+    <div class="box"><h3>가족 구성원별 자산 구성 <span class="hint">부채는 음수</span></h3><div class="bd" id="chOwner"></div></div>
+  </section>
+
+  <section class="panel" id="p-assets" role="tabpanel">
+    <div class="box"><h3>빠른 추가 <span class="hint">Enter 또는 [추가]. 금리·만기·부동산 상세는 [상세 입력창]</span></h3><div class="bd"><div class="qa" id="quickAdd"></div></div></div>
+    <div class="box">
+      <h3>자산 목록 <span class="hint">행 선택 후 Enter 또는 더블클릭으로 수정 · 머리글 클릭으로 정렬</span></h3>
+      <div class="bd">
+        <div class="row" style="margin-bottom:8px">
+          <label for="fCls">자산군</label><select id="fCls"></select>
+          <label for="fOwner">소유자</label><select id="fOwner"></select>
+          <label for="fKw">검색</label><input type="text" id="fKw" placeholder="자산명·기관·코드·메모" style="width:170px">
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn primary" id="btnNew">＋ 상세 입력창</button>
+          <button class="btn" id="btnEdit">선택 수정</button>
+          <button class="btn danger" id="btnDel">선택 삭제</button>
+        </div>
+        <div class="tw" id="tblAssets"></div>
+        <div class="errlist" id="quoteErrs" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-cat" role="tabpanel">
+    <div class="box"><h3>카테고리별 합계 <span class="hint">행을 클릭하면 상세</span></h3><div class="bd"><div class="tw" style="max-height:36vh" id="tblCat"></div></div></div>
+    <div class="grid2">
+      <div class="box"><h3>소유자별 합계</h3><div class="bd"><div class="tw" style="max-height:30vh" id="tblOwner"></div></div></div>
+      <div class="box"><h3>상세 내역 <span class="hint" id="catSel"></span></h3><div class="bd"><div class="tw" style="max-height:30vh" id="tblCatDetail"></div></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-stock" role="tabpanel">
+    <div class="box"><h3>보유 종목 통합</h3><div class="bd"><div class="tw" style="max-height:34vh" id="tblStock"></div></div></div>
+    <div class="box"><h3>종목별 현재가치 비중</h3><div class="bd" id="chTree"></div></div>
+    <div class="box"><h3>종목 상세 <span class="hint">매수 ▲ / 매도 ▼</span></h3>
+      <div class="bd">
+        <div class="row" style="margin-bottom:8px">
+          <label for="dtSel">종목</label><select id="dtSel" style="min-width:230px"></select>
+          <label for="dtRange">기간</label><select id="dtRange"><option value="0.25">3개월</option><option value="0.5">6개월</option><option value="1" selected>1년</option><option value="3">3년</option></select>
+          <button class="btn" id="btnDtFetch">일별 시세 받기</button>
+          <span class="spacer" style="flex:1"></span>
+          <button class="btn primary" id="btnTrade">＋ 매수/매도 기록</button>
+        </div>
+        <div id="chDetail"></div>
+        <div class="tw" style="max-height:26vh;margin-top:8px" id="tblTrades"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-re" role="tabpanel">
+    <div class="box"><h3>보유 부동산 <span class="hint">행을 클릭하면 조회 조건과 시세 추이가 채워집니다</span></h3><div class="bd"><div class="tw" style="max-height:32vh" id="tblRe"></div></div></div>
+    <div class="box"><h3>국토교통부 실거래가 조회 <span class="hint">서버가 조회합니다 · 인증키는 서버에만</span></h3>
+      <div class="bd">
+        <div class="qa" style="margin-bottom:8px">
+          <div class="field"><label for="reRegion">지역 검색</label><input type="text" id="reRegion" placeholder="예: 연수" style="width:100px"></div>
+          <div class="field"><label for="reLawdSel">시군구</label><select id="reLawdSel" style="min-width:150px"></select></div>
+          <div class="field"><label for="reLawd">법정동코드</label><input type="text" id="reLawd" style="width:70px"></div>
+          <div class="field"><label for="reKind">유형</label><select id="reKind"></select></div>
+          <div class="field"><label for="reComplex">단지/건물명</label><input type="text" id="reComplex" style="width:130px"></div>
+          <div class="field"><label for="reArea">전용면적(㎡)</label><input type="text" id="reArea" class="num" style="width:70px"></div>
+          <div class="field"><label for="reMonths">기간(개월)</label><input type="text" id="reMonths" class="num" value="6" style="width:50px"></div>
+          <button class="btn primary" id="btnReQuery">실거래가 조회</button>
+          <button class="btn" id="btnReApply">선택 자산에 시세 반영</button>
+        </div>
+        <div id="reMsg" class="note">조회 조건을 입력하고 [실거래가 조회]를 누르세요.</div>
+      </div></div>
+    <div class="grid2">
+      <div class="box"><h3>실거래 내역</h3><div class="bd"><div class="tw" style="max-height:34vh" id="tblDeals"></div></div></div>
+      <div class="box"><h3>선택 부동산 시세 추이 <span class="hint" id="reHistNote"></span></h3>
+        <div class="bd" id="chRe"></div>
+        <div class="bd" style="border-top:1px solid var(--line)"><div class="row"><label>시세 직접 기록</label>
+          <input type="date" id="reHDate"><input type="text" id="reHVal" class="num" placeholder="평가액(원)" style="width:130px">
+          <button class="btn sm" id="btnReHAdd">기록 추가</button></div></div></div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-trend" role="tabpanel">
+    <div class="box"><h3>자산 추이 분석</h3><div class="bd"><div class="row">
+      <label for="trMode">기준</label><select id="trMode"><option value="est">추정 (시세 이력·거래 재구성)</option><option value="snap">실측 (스냅샷)</option></select>
+      <label for="trYears">기간</label><select id="trYears"><option value="1">1년</option><option value="3" selected>3년</option><option value="5">5년</option></select>
+      <button class="btn primary" id="btnTrend">분석 실행</button>
+      <button class="btn" id="btnTrendFetch">보유종목 일별시세 일괄 수신</button>
+      <span class="note" id="trNote"></span></div></div></div>
+    <div class="box"><h3>총자산 · 순자산 · 투입원금 추이 <span class="hint" id="trFlags"></span></h3><div class="bd" id="chTrend1"></div></div>
+    <div class="box"><h3>카테고리별 누적 추이</h3><div class="bd" id="chTrend2"></div></div>
+  </section>
+
+  <section class="panel" id="p-index" role="tabpanel">
+    <div class="box"><h3>시장 지수</h3><div class="bd"><div class="row">
+      <label for="ixRange">기간</label><select id="ixRange"><option value="2025-03-01">6개월</option><option value="2025-09-01">1년</option><option value="2023-09-01" selected>3년</option><option value="2021-09-01">5년</option></select>
+      <button class="btn primary" id="btnIxLoad">새로고침</button><span class="note" id="ixMsg"></span></div></div></div>
+    <div class="grid2" id="ixCharts"></div>
+  </section>
+
+  <section class="panel" id="p-set" role="tabpanel">
+    <div class="box"><h3>계정 · 가구</h3><div class="bd">
+      <div id="acctInfo" class="note"></div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="invEmail" placeholder="가족 이메일" style="width:220px">
+        <select id="invRole"><option value="editor">편집 가능</option><option value="viewer">조회만</option></select>
+        <button class="btn" id="btnInvite">가구에 초대</button><span class="note" id="invMsg"></span>
+      </div>
+      <p class="note" style="margin-top:8px">초대된 가족이 처음 로그인하면 이 가구에 자동으로 합류합니다. 잠금 암호는 직접 전달하세요 — 서버는 모릅니다.</p>
+    </div></div>
+    <div class="box"><h3>동기화 · 백업</h3><div class="bd">
+      <div id="storeMsg" class="note"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn primary" id="btnSync">지금 동기화</button>
+        <button class="btn" id="btnExport">JSON 백업 내보내기</button>
+        <button class="btn" id="btnImportBtn">JSON 불러오기</button>
+        <input type="file" id="btnImport" accept=".json" hidden>
+        <button class="btn" id="btnCsv">자산목록 CSV</button>
+        <button class="btn" id="btnSample">샘플 데이터 넣기</button>
+        <button class="btn" id="btnClearSnap">스냅샷 초기화</button>
+        <button class="btn" id="btnLock">이 기기에서 잠그기</button>
+        <button class="btn danger" id="btnWipe">전체 삭제</button>
+      </div>
+      <div class="warn" style="margin-top:10px">JSON 백업은 <b>평문</b>입니다. 개인 저장매체에만 보관하세요.</div>
+    </div></div>
+    <div class="box"><h3>안내</h3><div class="bd" id="guide"></div></div>
+  </section>
+</main>
+
+<div class="mask" id="mask"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div id="bar"><span id="status">준비</span><span class="spacer"></span><span id="barFx"></span><span id="barStore"></span></div>
+
+<script type="module" src="/main.js"></script>
+</body>
+</html>

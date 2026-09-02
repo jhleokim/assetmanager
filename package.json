@@ -5,8 +5,14 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node --test core/*.test.js",
-    "test:watch": "node --test --watch core/*.test.js"
+    "build": "node tools/build.js",
+    "test": "node --test core/*.test.js worker/*.test.js",
+    "test:watch": "node --test --watch core/*.test.js worker/*.test.js",
+    "dev": "npm run build && wrangler dev --env dev",
+    "deploy": "npm run build && wrangler deploy",
+    "smoke": "npm run build && node tools/smoke.js"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }

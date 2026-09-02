@@ -1,0 +1,36 @@
+name = "assetmanager"
+main = "worker/index.js"
+compatibility_date = "2026-08-01"
+
+# 정적 프런트엔드 — app/ 를 그대로 서빙. /api/* 만 Worker로 간다.
+[assets]
+directory = "./app"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "assetmanager"
+database_id = "REPLACE_WITH_ID_FROM: wrangler d1 create assetmanager --location apac"
+
+[vars]
+ENVIRONMENT = "production"
+# Cloudflare Zero Trust → Access → Applications 에서 앱을 만들고 아래 두 값을 채운다.
+ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+ACCESS_AUD = "REPLACE_WITH_APPLICATION_AUDIENCE_TAG"
+
+# 비밀은 vars에 두지 않는다:
+#   wrangler secret put RTMS_KEY     ← 공공데이터포털 일반 인증키(Decoding)
+
+[env.dev]
+vars = { ENVIRONMENT = "dev", DEV_BYPASS_EMAIL = "dev@example.com", ACCESS_TEAM_DOMAIN = "", ACCESS_AUD = "" }
+
+# 배포 순서
+#   1. wrangler d1 create assetmanager --location apac   → database_id 를 위에 기입
+#   2. wrangler d1 execute assetmanager --remote --file=worker/schema.sql
+#   3. wrangler secret put RTMS_KEY
+#   4. Zero Trust 대시보드에서 Access 앱 생성 (도메인 = 이 Worker), 허용 이메일 등록
+#   5. wrangler deploy
+# 로컬:
+#   wrangler d1 execute assetmanager --local --file=worker/schema.sql
+#   wrangler dev --env dev

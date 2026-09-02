@@ -6,41 +6,86 @@
 
 ## 구성
 
-| 경로 | 내용 |
-|---|---|
-| `core/` | 평가·집계 계산 계층 (순수 함수 + 단위 테스트 50개) — [설명](core/README.md) |
-| `prototype/index.html` | 초기 프로토타입 2,170줄. **기준선으로만 보관하며 실사용 비권장** |
-| `tools/compare-legacy.js` | 프로토타입과 `core/`의 계산 결과 수치 비교 |
-| `docs/` | 문제 분석·네트워크 분석·다중 사용자 설계 |
+```
+app/          프런트엔드 (ES 모듈, 빌드 도구 없음)      → Workers Assets 로 서빙
+  main.js       화면 전체. 표는 core/html.table, 인라인 onclick·innerHTML 없음 (CSP 호환)
+  store.js      IndexedDB 원본 + 종단간 암호화 동기화 (병합·묘비)
+  api.js        /api 클라이언트 (같은 오리진, CORS 없음)
+  charts.js     SVG 차트 (프로토타입에서 추출, innerHTML 제거)
+  core/         빌드 시 ../core 에서 복사 (git 제외)
+core/         평가·집계·시계열·암호화·안전 DOM — 순수 모듈, 브라우저·Worker 공용
+worker/       Cloudflare Worker: Access JWT 검증 · 암호문 봉투 동기화 · 시세/실거래가 중계+캐시
+  schema.sql    D1 — 자산 테이블 없음. 가구별 암호문 봉투 + 실거래가 캐시만
+tools/        build.js (core→app 복사) · smoke.js (Chromium 종단 검증) · compare-legacy.js
+docs/         ANALYSIS · NETWORK · MULTIUSER · DATA-PRIVACY · DEPLOY
+prototype/    최초 단일 파일 프로토타입 (기준선, 실사용 비권장)
+```
+
+```bash
+npm test        # 단위 테스트 121개 (node --test, 의존성 0)
+npm run smoke   # 실제 Chromium에서 잠금→E2EE→XSS→렌더 28항목 검증
+npm run deploy  # wrangler deploy  (절차: docs/DEPLOY.md)
+```
+
+## 구조 한 장
 
 ```
-npm test                        # core/ 단위 테스트 (의존성 없음)
-node tools/compare-legacy.js    # 수정 전후 숫자 비교
+브라우저
+  ├── IndexedDB        자산 원본 (평문, 이 기기 안에서만)
+  ├── core/            평가·집계 — 서버 계산 불필요
+  └── AES-GCM          잠금 암호 → PBKDF2 600,000회 → 키 (추출 불가, IndexedDB 보관)
+        │  암호문 봉투만
+        ▼
+  Worker ── Cloudflare Access (Google/이메일 OTP, 비밀번호 저장 없음)
+        ├── /api/vault    봉투 저장 · 낙관적 버전     → D1
+        ├── /api/quote    시세 중계 (개인정보 없음)   → Cache API
+        └── /api/rtms     실거래가 중계 · 월별 캐시   → D1   (인증키는 서버 secret)
 ```
+
+## 분석 항목 ↔ 처리 현황
+
+| 항목 | 상태 | 어디서 |
+|---|---|---|
+| P0-1 예금 이자 만기 무시 / 적금 과대 | ✅ | `core/valuation.js` `accrued`·`accruedInstallment` |
+| P0-2 투입원금 추이 미계산 | ✅ | `core/timeseries.js` `costBasisAt` |
+| P0-3 MANUAL 과거값 = 오늘 값 | ✅ | `valueAtDate` 보간 + `ESTIMATED` 배지 |
+| P0-4 인증키 프록시 유출 | ✅ | 서버 secret (`wrangler secret put RTMS_KEY`), 클라이언트 제거 |
+| P0-5 localStorage 초과 유실 | ✅ | IndexedDB + 서버 봉투 |
+| P0-6 보유수량 임의 재조정 | ✅ | `quantityAt` 기초보유분 해석 + 모순 감지 |
+| P1-1 LTV 혼입 | ✅ | `loanToValue` 담보 연결 기준 |
+| P1-2 대출 이중계상 | ✅ | `resolveLoanLinks` + 자산 `secures` 필드 |
+| P1-3 원금 미상 → 수익 부풀림 | ✅ | `totals.unknownBasis` |
+| P1-4 통화 혼재 / 취득 환율 | ✅ | `fxAtCost`, 열에 통화 표기 |
+| P1-5 순차 조회·타임아웃 없음 | ✅ | 서버 1회 왕복 + `pool` + `fetchWithTimeout` |
+| P1-5b 프록시 오염 | ✅ | 프록시 자체 제거 |
+| P1-6 비공식 API 의존 | ⚠️ 유지 | 서버 중계로 격리했으나 출처는 같음. 대체 소스 미확보 |
+| P1-7 실거래가 단순 평균 / 500건 잘림 | ✅ | IQR 이상치 제거 → 중위값, `totalCount` 페이지네이션 |
+| P1-8 시세 이력 고아 데이터 | ⚠️ 부분 | 삭제 시 RE: 키만 정리. 종목 이력은 공유라 유지 |
+| P1-9 셀 편집마다 전체 렌더 | ⚠️ 유지 | 구조는 같음. 자산 수백 건 규모에서 재검토 |
+| P1-10 실패 목록 없음 | ✅ | 자산 목록 하단 실패 목록 + 시세 기준일 배지 |
+| P2-1 단일 파일·테스트 0 | ✅ | 모듈 분리, 단위 121 + 종단 28 |
+| P2-2 스키마 마이그레이션 | ✅ | `store.js migrate` (v1→v2) |
+| P2-3 가져오기 검증 부재 | ✅ 부분 | 병합 방식 + 가져오기 전 자동 백업. 필드 타입 검증은 아직 |
+| P2-7 → P0 XSS | ✅ | `innerHTML` 0곳, `h()`가 `on*`·`javascript:` 거부, CSP `script-src 'self'` |
+| P3 접근성·키보드 | ✅ 부분 | 행 tabindex, Enter/↑↓/Delete, role=tab. 색상 외 표시는 배지로 일부 |
+| P3 한국식 금액 입력 | ✅ | `pnum("1.2억")` |
+| P3 스냅샷 중복 | ✅ | 하루 1건 |
 
 ## 진행 상황
 
 - [x] 프로토타입 문제 분석 ([ANALYSIS.md](docs/ANALYSIS.md))
 - [x] 시세·실거래가 조회 계층 분석 ([NETWORK.md](docs/NETWORK.md))
-- [x] 다중 사용자 전환 설계 ([MULTIUSER.md](docs/MULTIUSER.md)) — 인증은 Cloudflare Access로 결정
-- [x] 자산 데이터 보관 방식 결정 ([DATA-PRIVACY.md](docs/DATA-PRIVACY.md)) — 로컬 우선 + 종단간 암호화
-- [x] 계산 로직 분리 + P0-1~3, P0-6, P1-1~4 수정 (`core/`)
-- [ ] XSS 정리 (`esc()` 보강, `innerHTML` → DOM 생성) — 인증 도입 전 필수
-- [ ] Worker + D1 이전
-- [ ] 시세·실거래가 서버 중계 + 캐시
+- [x] 다중 사용자 전환 설계 ([MULTIUSER.md](docs/MULTIUSER.md)) — 인증은 Cloudflare Access
+- [x] 자산 데이터 보관 방식 ([DATA-PRIVACY.md](docs/DATA-PRIVACY.md)) — 로컬 우선 + 종단간 암호화
+- [x] 계산 로직 분리 + P0/P1 계산 버그 수정 (`core/`)
+- [x] XSS 정리 — `innerHTML` 제거, 안전 DOM 빌더, CSP
+- [x] Worker + D1 — Access JWT, 봉투 동기화, 실거래가 월별 캐시, 시세 중계
+- [x] 프런트 이전 — IndexedDB, E2EE 동기화, 잠금 화면, 가족 초대
+- [ ] 실제 배포 후 네이버·Yahoo 엔드포인트가 Workers 발신 IP에서 응답하는지 확인 (P1-6)
+- [ ] 부채 원리금균등 상환 스케줄 (잔액 자동 감소)
+- [ ] 구성원별 열람 범위 (현재는 가구 단위 전체 공유)
 
-알려진 문제는 [`docs/ANALYSIS.md`](docs/ANALYSIS.md)에 P0~P3으로 정리되어 있고,
-시세·실거래가 조회 계층은 [`docs/NETWORK.md`](docs/NETWORK.md)에서 따로 깊이 다룬다. 요약:
-
-- **P0** 예금 이자가 만기를 무시하고 무한 누적됨 / 투자원금 추이 그래프가 계산되지 않음 /
-  공공데이터포털 인증키가 제3자 프록시로 전송됨 / localStorage 용량 초과 시 데이터 무단 유실
-- **P1** LTV·연결대출 계산 오류 / 통화 혼재 표시 / 비공식 API 의존 /
-  시세 조회가 13개 요청을 순차 처리하고 타임아웃·캐시가 없음 /
-  프록시 1회 오작동이 세션 전체를 오염시킴
-- **P2** 단일 파일 2,170줄, 계산 로직 단위 테스트 0개, 스키마 마이그레이션 없음
-- **P3** 접근성 전무, 모바일 미대응, 키보드 편집 불가
-
-## 기능 (프로토타입 기준)
+## 기능
 
 | 탭 | 내용 |
 |---|---|
