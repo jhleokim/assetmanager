@@ -11,7 +11,7 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "assetmanager"
-database_id = "REPLACE_WITH_ID_FROM: wrangler d1 create assetmanager --location apac"
+database_id = "cb47cc1a-cc08-4dca-b9c6-e15bdd78e0c3"
 
 [vars]
 ENVIRONMENT = "production"
