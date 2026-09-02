@@ -4,10 +4,29 @@
 외부 라이브러리 없이 순수 HTML/CSS/JS + 자체 SVG 차트로 구현되어 있고, 데이터는
 브라우저 localStorage에만 저장된다.
 
-## 현재 상태
+## 구성
 
-`prototype/index.html` — 초기 프로토타입 (2,170줄). **개선 작업의 기준선(baseline)으로만
-커밋되어 있으며, 실사용을 권장하지 않는다.**
+| 경로 | 내용 |
+|---|---|
+| `core/` | 평가·집계 계산 계층 (순수 함수 + 단위 테스트 50개) — [설명](core/README.md) |
+| `prototype/index.html` | 초기 프로토타입 2,170줄. **기준선으로만 보관하며 실사용 비권장** |
+| `tools/compare-legacy.js` | 프로토타입과 `core/`의 계산 결과 수치 비교 |
+| `docs/` | 문제 분석·네트워크 분석·다중 사용자 설계 |
+
+```
+npm test                        # core/ 단위 테스트 (의존성 없음)
+node tools/compare-legacy.js    # 수정 전후 숫자 비교
+```
+
+## 진행 상황
+
+- [x] 프로토타입 문제 분석 ([ANALYSIS.md](docs/ANALYSIS.md))
+- [x] 시세·실거래가 조회 계층 분석 ([NETWORK.md](docs/NETWORK.md))
+- [x] 다중 사용자 전환 설계 ([MULTIUSER.md](docs/MULTIUSER.md)) — 인증은 Cloudflare Access로 결정
+- [x] 계산 로직 분리 + P0-1~3, P0-6, P1-1~4 수정 (`core/`)
+- [ ] XSS 정리 (`esc()` 보강, `innerHTML` → DOM 생성) — 인증 도입 전 필수
+- [ ] Worker + D1 이전
+- [ ] 시세·실거래가 서버 중계 + 캐시
 
 알려진 문제는 [`docs/ANALYSIS.md`](docs/ANALYSIS.md)에 P0~P3으로 정리되어 있고,
 시세·실거래가 조회 계층은 [`docs/NETWORK.md`](docs/NETWORK.md)에서 따로 깊이 다룬다. 요약:
