@@ -11,6 +11,8 @@ import { fmtWon, fmtNum, fmtPct, pnum, todayISO, dOf, addDays, isoOf, maskAcct, 
 import { emptyChart, lineChart, donutChart, groupedBar, stackedBar, stackedArea, treemap } from "./charts.js";
 import * as Store from "./store.js";
 import { api } from "./api.js";
+import { VERSION } from "./version.js";
+import { initLedger, renderLedger } from "./ledger.js";
 
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
@@ -61,17 +63,18 @@ async function paintStore(){
   $("#barStore").textContent = (S.dirty ? "● 미동기화" : "✓ 동기화") + " · 로컬 IndexedDB";
   replace($("#storeMsg"),
     "이 기기 IndexedDB에 원본 보관 · 서버에는 암호문만 · 마지막 동기화 ", h("b", null, t),
-    " · 자산 " + S.db.assets.length + "건 · 거래 " + S.db.trades.length + "건 · 스냅샷 " + S.db.snaps.length + "건");
+    " · 자산 " + S.db.assets.length + "건 · 거래 " + S.db.trades.length + "건 · 스냅샷 " + S.db.snaps.length + "건 · 가계부 " + S.db.ledger.entries.length + "건");
 }
 
 /* ── 렌더 공통 ────────────────────────────────────────────────────────── */
 const TABS = [["dash","대시보드"],["assets","자산 목록"],["cat","카테고리별"],["stock","주식·ETF"],
-              ["re","부동산"],["trend","자산 추이"],["index","시장 지수"],["set","설정"]];
+              ["re","부동산"],["ledger","가계부"],["trend","자산 추이"],["index","시장 지수"],["set","설정"]];
 function showTab(id){
   TABS.forEach(([t]) => { $("#p-" + t).classList.toggle("on", t === id);
     const b = $("#nav-" + t); if(b){ b.classList.toggle("on", t === id); b.setAttribute("aria-selected", String(t === id)); } });
   S.db.set.tab = id;
   if(id === "trend") $("#trNote").textContent = "스냅샷 " + S.db.snaps.length + "건";
+  if(id === "ledger") renderLedger();
 }
 function renderNav(){
   replace($("#nav"), TABS.map(([t, l]) => h("button", { id: "nav-" + t, role: "tab", type: "button" }, l)));
@@ -98,6 +101,7 @@ function renderAll(){
   $("#hdNet").textContent = "순자산 " + fmtWon(S.tot.net) + " · 부채 " + fmtWon(S.tot.debt);
   $("#barFx").textContent = "USD/KRW " + fmtNum(S.fx.USD, 2);
   renderDash(); renderAssets(); renderCat(); renderStock(); renderRe(); paintStore();
+  if(S.db.set.tab === "ledger") renderLedger();
 }
 
 /* ── 1. 대시보드 ──────────────────────────────────────────────────────── */
@@ -644,11 +648,11 @@ function importJson(file){
   fr.onload = async () => {
     try{
       const d = JSON.parse(fr.result);
-      if(!d || !Array.isArray(d.assets)) throw new Error("형식이 올바르지 않습니다");
+      if(!d || (!Array.isArray(d.assets) && !(d.ledger && Array.isArray(d.ledger.entries)))) throw new Error("형식이 올바르지 않습니다");
       if(!confirm("현재 데이터에 백업 파일을 병합합니다 (같은 id는 최신 쪽). 계속할까요?")) return;
       exportJson();                                           // 되돌릴 수 있게 현재 상태를 먼저 내려받는다
       S.db = Store.merge(Store.migrate(d), S.db);
-      await save({ syncNow: true }); boot2(); status("불러오기 완료 — 자산 " + S.db.assets.length + "건");
+      await save({ syncNow: true }); boot2(); status("불러오기 완료 — 자산 " + S.db.assets.length + "건 · 가계부 " + S.db.ledger.entries.length + "건");
     }catch(e){ alert("불러오기 실패: " + e.message); }
   };
   fr.readAsText(file);
@@ -665,6 +669,8 @@ async function loadSample(){
 function bind(){
   renderNav();
   $("#today").textContent = " " + new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+  $("#ver").textContent = "v" + VERSION; document.title += " v" + VERSION;
+  initLedger({ S, save, nextId, touch, status, openModal, closeModal });
   $("#btnRefresh").addEventListener("click", async () => { const b = $("#btnRefresh"); b.disabled = true;
     try{ await refreshQuotes(); }catch(e){ progress(0, 0); status("시세 갱신 실패: " + e.message); } b.disabled = false; });
   $("#btnSnap").addEventListener("click", saveSnapshot);
@@ -719,8 +725,9 @@ function bind(){
   $("#btnSample").addEventListener("click", () => { if(confirm("샘플 가족 자산 데이터를 추가할까요?")) loadSample(); });
   $("#btnClearSnap").addEventListener("click", () => { if(confirm("스냅샷을 모두 삭제할까요?")){ S.db.snaps = []; save(); paintStore(); } });
   $("#btnLock").addEventListener("click", async () => { await Store.forgetKey(S.hh.id); location.reload(); });
-  $("#btnWipe").addEventListener("click", async () => { if(!confirm("이 가구의 모든 자산·거래·시세이력을 삭제합니다. 서버 봉투도 빈 상태로 덮어씁니다. 계속할까요?")) return;
+  $("#btnWipe").addEventListener("click", async () => { if(!confirm("이 가구의 모든 자산·거래·시세이력·가계부를 삭제합니다. 서버 봉투도 빈 상태로 덮어씁니다. 계속할까요?")) return;
     const t = Date.now(); S.db.assets.forEach(a => S.db.tomb["assets:" + a.id] = t); S.db.trades.forEach(x => S.db.tomb["trades:" + x.id] = t);
+    for(const c of ["entries", "recurring", "events"]) S.db.ledger[c].forEach(x => S.db.tomb["ledger." + c + ":" + x.id] = t);
     S.db = { ...Store.EMPTY(), set: S.db.set, tomb: S.db.tomb, seq: S.db.seq }; await save({ syncNow: true }); boot2(); status("전체 삭제 완료"); });
   $("#mask").addEventListener("click", e => { if(e.target.id === "mask") closeModal(); });
   document.addEventListener("keydown", e => { if(e.key === "Escape" && $("#mask").classList.contains("on")) closeModal(); });

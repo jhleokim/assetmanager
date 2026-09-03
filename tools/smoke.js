@@ -131,6 +131,39 @@ try{
   check("실거래가 추정 (중위값·이상치) 표시", /추정 시세/.test(await page.textContent("#reMsg")));
   check("부동산 시세 추이 SVG", !!(await page.$("#chRe svg")));
 
+  /* 가계부 */
+  await page.click("#nav-ledger");
+  await page.waitForSelector("#lq-amt", { timeout: 10000 });
+  check("헤더 버전 표시", /^v\d+\.\d+\.\d+$/.test((await page.textContent("#ver")).trim()));
+  const lgAdd = async (cat, sub, amt, memo) => { await page.selectOption("#lq-cat", cat); await page.selectOption("#lq-sub", sub);
+    await page.fill("#lq-amt", amt); await page.fill("#lq-memo", memo); await page.press("#lq-memo", "Enter"); await page.waitForTimeout(150); };
+  await lgAdd("수입", "월급", "350만", "9월 급여");
+  await lgAdd("식비", "마트", "40,000", "장보기");
+  await lgAdd("저축", "적금", "50만", "청년적금");
+  await lgAdd("이체", "카드대금", "1,000,000", "카드값");           // 어느 합계에도 없어야 한다
+  await lgAdd("식비", "외식", `<img src=x onerror="window.__xss2=1">`, "");   // 금액 자리에 페이로드 → 거부
+  await lgAdd("식비", "외식", "20,000", `<img src=x onerror="window.__xss2=1">`); // 내용에 페이로드 → 텍스트
+  const rows = await page.$$eval("#lg-month tbody tr[data-id]", r => r.length);
+  check("가계부 항목 4건 렌더 (잘못된 금액 1건은 거부)", rows === 5, rows + "건");
+  const cardsTxt = await page.textContent("#lg-month .cards");
+  check("수입 350만 · 지출 6만 · 저축 50만", /수입350만원/.test(cardsTxt) && /지출6만원/.test(cardsTxt) && /저축50만원/.test(cardsTxt), cardsTxt.slice(0, 120));
+  check("잔여 = 수입 − 지출 − 저축 (이체 제외)", /잔여294만원/.test(cardsTxt), cardsTxt);
+  check("가계부 내용 XSS 미실행", (await page.evaluate(() => window.__xss2)) === undefined);
+  check("가계부 내용 XSS 텍스트 렌더", await page.evaluate(() => [...document.querySelectorAll("#lg-month td")].some(td => td.textContent.includes("onerror"))) && (await page.$$eval("#lg-month img", e => e.length)) === 0);
+  check("대분류별 지출 도넛", !!(await page.$("#lgDonut svg")));
+  await page.click("#lgNav button[data-view=year]");
+  await page.waitForSelector("#lyCh1 svg", { timeout: 5000 });
+  check("연간표 렌더 (총 수입 행)", /총 수입/.test(await page.textContent("#lg-year")));
+  await page.click("#lgNav button[data-view=fund]");
+  await page.selectOption("#lf-cat", "저축"); await page.fill("#lf-amt", "30만"); await page.press("#lf-amt", "Enter"); await page.waitForTimeout(150);
+  await page.selectOption("#lf-cat", "예비비"); await page.selectOption("#lf-sub", "여행"); await page.fill("#lf-amt", "10만"); await page.press("#lf-amt", "Enter"); await page.waitForTimeout(150);
+  check("예비비 잔액 20만", /20만원/.test(await page.textContent("#lg-fund .cards")), await page.textContent("#lg-fund .cards"));
+  await page.click("#lgNav button[data-view=set]");
+  await page.fill("#lr-name", "관리비"); await page.fill("#lr-amt", "15만"); await page.fill("#lr-day", "10"); await page.click("#lrAdd"); await page.waitForTimeout(150);
+  await page.click("#lgNav button[data-view=month]"); await page.click("#lgFill"); await page.waitForTimeout(200);
+  check("고정지출 규칙 → 이달 항목 생성", /규칙/.test(await page.textContent("#lg-month tbody")));
+  check("규칙 채우기 버튼은 채운 뒤 비활성", await page.$eval("#lgFill", b => b.disabled));
+
   /* 설정 · 세후 토글 */
   await page.click("#nav-set");
   const before = await page.textContent("#hdTotal");
@@ -142,6 +175,11 @@ try{
   await page.waitForFunction(() => document.querySelectorAll("#tblAssets tbody tr[data-id]").length > 10, null, { timeout: 15000 });
   check("재로드 후 잠금 화면 없이 복원 (IndexedDB의 CryptoKey)", await page.$eval("#lock", e => e.hidden));
   check("재로드 후 XSS 페이로드 자산도 여전히 텍스트", await page.evaluate(() => window.__xss === undefined));
+  await page.click("#nav-ledger"); await page.waitForSelector("#lq-amt", { timeout: 5000 });
+  const lgAfter = await page.$$eval("#lg-month tbody tr[data-id]", r => r.length);
+  check("재로드 후 가계부 항목 복원 (봉투 v3 왕복)", lgAfter >= 6, lgAfter + "건");
+  const rawL = JSON.stringify(state.puts.at(-1));
+  check("봉투에 가계부 평문 없음", !rawL.includes("장보기") && !rawL.includes("청년적금"));
 
   check("페이지 오류 없음", errors.length === 0, errors.slice(0, 3).join(" | "));
 }catch(e){ check("예외 없이 완료", false, e.message); errors.forEach(x => console.log("   ", x)); }

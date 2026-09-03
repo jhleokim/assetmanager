@@ -4,9 +4,13 @@
  *  - 잠금 암호에서 파생한 CryptoKey(추출 불가)를 IndexedDB에 보관해 기기당 한 번만 묻는다.
  *  - 동기화는 가구당 봉투 하나. 낙관적 버전 + id·updatedAt 기준 병합. */
 import { deriveKey, deriveKeyFor, seal, open, makeVerifier, checkPassphrase } from "./core/crypto.js";
+import { defaultSettings } from "./core/ledger.js";
 
 const DB_NAME = "assetmanager", DB_VER = 1;
-export const EMPTY = () => ({ v: 2, seq: 1, assets: [], trades: [], hist: {}, snaps: [], set: {}, tomb: {} });
+export const EMPTY = () => ({ v: 3, seq: 1, assets: [], trades: [], hist: {}, snaps: [], set: {}, tomb: {}, ledger: emptyLedger() });
+/** 가계부 — 같은 봉투 안에 산다. 서버 스키마는 그대로 (봉투는 불투명 암호문). */
+export const emptyLedger = () => ({ settings: defaultSettings(), entries: [], recurring: [], events: [] });
+const LEDGER_COLLS = ["entries", "recurring", "events"];
 
 function idb(){
   return new Promise((res, rej) => {
@@ -62,10 +66,15 @@ export async function setMeta(householdId, patch){
   await kvSet("kv", "meta:" + householdId, { ...(await getMeta(householdId)), ...patch });
 }
 
-/** v1(프로토타입) → v2: 적금을 INSTALLMENT로, updatedAt 부여, 인증키 제거 */
+/** v1(프로토타입) → v2: 적금을 INSTALLMENT로, updatedAt 부여, 인증키 제거
+ *  v2 → v3: 가계부(ledger) 추가. 기존 자산·거래 구조는 손대지 않는다. */
 export function migrate(d){
   const out = { ...EMPTY(), ...d };
   if(!out.tomb) out.tomb = {};
+  // ledger 는 부분적으로 빠져 있어도 채운다 (구버전 백업·병합 결과 대비)
+  const L = out.ledger = { ...emptyLedger(), ...(d.ledger || {}) };
+  L.settings = { ...defaultSettings(), ...(L.settings || {}) };
+  for(const c of LEDGER_COLLS) if(!Array.isArray(L[c])) L[c] = [];
   if((d.v || 1) < 2){
     const t = Date.now();
     out.assets.forEach(a => { if(a.cat === "적금" && a.mode === "RATE"){ a.mode = "INSTALLMENT"; a.monthly = a.monthly || 0; } if(!a.updatedAt) a.updatedAt = t; });
@@ -74,6 +83,7 @@ export function migrate(d){
     delete out.set.proxies;
     out.v = 2;
   }
+  if(out.v < 3) out.v = 3;
   return out;
 }
 
@@ -112,10 +122,22 @@ export function merge(local, remote){
   (local.snaps || []).forEach(s => sm.set(snapKey(s), s));
   out.snaps = [...sm.values()].sort((a, b) => a.ts < b.ts ? -1 : 1);
   out.set = { ...(remote.set || {}), ...(local.set || {}) };
+  // 가계부: 항목·규칙·이벤트는 id 기준 병합, 설정은 updatedAt이 최신인 쪽 (같으면 로컬)
+  const lL = local.ledger || emptyLedger(), rL = remote.ledger || emptyLedger();
+  out.ledger = emptyLedger();
+  for(const coll of LEDGER_COLLS){
+    const m = new Map();
+    for(const x of (rL[coll] || [])) m.set(x.id, x);
+    for(const x of (lL[coll] || [])) m.set(x.id, m.has(x.id) ? newer(x, m.get(x.id)) : x);
+    const tk = "ledger." + coll + ":";
+    out.ledger[coll] = [...m.values()].filter(x => !tomb[tk + x.id] || (x.updatedAt || 0) > tomb[tk + x.id]);
+  }
+  out.ledger.settings = (rL.settings && (rL.settings.updatedAt || 0) > ((lL.settings || {}).updatedAt || 0)) ? rL.settings : (lL.settings || rL.settings || defaultSettings());
   out.tomb = tomb;
   out.seq = Math.max(local.seq || 1, remote.seq || 1,
-    ...out.assets.map(a => a.id || 0), ...out.trades.map(t => t.id || 0)) + 1;
-  out.v = 2;
+    ...out.assets.map(a => a.id || 0), ...out.trades.map(t => t.id || 0),
+    ...LEDGER_COLLS.flatMap(c => out.ledger[c].map(x => x.id || 0))) + 1;
+  out.v = 3;
   return out;
 }
 
@@ -151,4 +173,4 @@ export async function sync({ api, householdId, key, kdfSalt, local }){
   await setMeta(householdId, { syncedAt: Date.now(), version: base });
   return { db: merged, version: base, pushed, pulled: !!remoteDb };
 }
-const strip = d => ({ a: d.assets, t: d.trades, h: d.hist, s: d.snaps, set: d.set, tomb: d.tomb });
+const strip = d => ({ a: d.assets, t: d.trades, h: d.hist, s: d.snaps, set: d.set, tomb: d.tomb, l: d.ledger });
